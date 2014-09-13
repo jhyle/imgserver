@@ -8,58 +8,84 @@ import (
 
 type (
 	CacheStats struct {
-		Items int
-		Gets  int
-		Puts  int
-		Hits  int
+		Items  uint32
+		Size   uint64
+		Gets   uint64
+		Puts   uint64
+		Hits   uint64
+		Prunes uint64
 	}
 
-	Cache interface {
+	ByteCache interface {
 		FindKeys(prefix string) []string
-		Put(key string, value interface{}) interface{}
-		Get(key string) interface{}
-		Remove(keys []string) []interface{}
+		Put(key string, value []byte) []byte
+		Get(key string) []byte
+		Remove(keys []string) [][]byte
 		Stats() CacheStats
 	}
 
 	mapCache struct {
 		sync.RWMutex
-		keys []string
-		m    map[string]interface{}
+		keys  []string
+		m     map[string][]byte
+		max   uint64
 		stats CacheStats
 	}
 )
 
-func NewMapCache(capacity int) Cache {
-	return &mapCache{keys: make([]string, 0, capacity), m: make(map[string]interface{}, capacity)}
+func NewByteCache(capacity uint64) ByteCache {
+
+	return &mapCache{m: make(map[string][]byte), max: capacity}
 }
 
-func (cache *mapCache) Put(key string, value interface{}) interface{} {
+func (cache *mapCache) removeKey(i int) {
 
+	v := cache.m[cache.keys[i]]
+	if v != nil {
+		cache.stats.Size -= uint64(len(v))
+	}
+	cache.stats.Items--
+
+	delete(cache.m, cache.keys[i])
+	copy(cache.keys[i:], cache.keys[i+1:])
+	cache.keys = cache.keys[:len(cache.keys)-1]
+}
+
+func (cache *mapCache) Put(key string, value []byte) []byte {
+
+	if uint64(len(value)) > cache.max {
+		return nil
+	}
 	cache.Lock()
-	var oldValue interface{} = nil
 
-	if v, exists := cache.m[key]; exists {
-		oldValue = v
-	} else {
-		if len(cache.keys) == cap(cache.keys) {
-			i := rand.Intn(len(cache.keys))
-			delete(cache.m, cache.keys[i])
-			cache.keys[i] = key
-		} else {
-			cache.keys = append(cache.keys, key)
-			cache.stats.Items++
+	neededCapacity := len(value)
+	oldValue, exists := cache.m[key]
+	if oldValue != nil {
+		neededCapacity -= len(oldValue)
+	}
+
+	for cache.stats.Size+uint64(neededCapacity) > cache.max {
+		i := rand.Intn(len(cache.keys))
+		if cache.keys[i] != key {
+			cache.removeKey(i)
+			cache.stats.Prunes++
 		}
+	}
+
+	if !exists {
+		cache.keys = append(cache.keys, key)
+		cache.stats.Items++
 	}
 
 	cache.m[key] = value
 	cache.stats.Puts++
+	cache.stats.Size += uint64(neededCapacity)
 
 	cache.Unlock()
 	return oldValue
 }
 
-func (cache *mapCache) Get(key string) interface{} {
+func (cache *mapCache) Get(key string) []byte {
 
 	cache.RLock()
 
@@ -73,27 +99,21 @@ func (cache *mapCache) Get(key string) interface{} {
 	return item
 }
 
-func (cache *mapCache) Remove(keys []string) []interface{} {
+func (cache *mapCache) Remove(keys []string) [][]byte {
 
 	cache.Lock()
-	var oldValues = make([]interface{}, len(keys), len(keys))
+	var oldValues = make([][]byte, len(keys), len(keys))
 
 	for n := 0; n < len(keys); n++ {
 		key := keys[n]
 		if v, exists := cache.m[key]; exists {
 			oldValues[n] = v
-			delete(cache.m, key)
-			cache.stats.Items--
-
-			var i int
-			for i = 0; i < len(cache.keys); i++ {
+			for i := 0; i < len(cache.keys); i++ {
 				if cache.keys[i] == key {
+					cache.removeKey(i)
 					break
 				}
 			}
-
-			copy(cache.keys[i:], cache.keys[i+1:])
-			cache.keys = cache.keys[:len(cache.keys)-1]
 		}
 	}
 
@@ -118,5 +138,5 @@ func (cache *mapCache) FindKeys(prefix string) []string {
 
 func (cache *mapCache) Stats() CacheStats {
 
-	return cache.stats;
+	return cache.stats
 }

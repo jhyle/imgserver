@@ -17,13 +17,13 @@ type (
 		host       string
 		port       int
 		imageDir   Directory
-		imageCache Cache
+		imageCache ByteCache
 	}
 )
 
-func NewImgServerApi(host string, port int, imageDir string, cacheSize int) ImgServerApi {
+func NewImgServerApi(host string, port int, imageDir string, cacheSize uint64) ImgServerApi {
 
-	return ImgServerApi{host, port, NewFsDirectory(imageDir), NewMapCache(cacheSize)}
+	return ImgServerApi{host, port, NewFsDirectory(imageDir), NewByteCache(cacheSize)}
 }
 
 func toInt(input string, deflt int) int {
@@ -84,7 +84,7 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 	cacheKey := params.Get("image") + string(width) + string(height)
 
 	if cachedImage := api.imageCache.Get(cacheKey); cachedImage != nil {
-		sendJpeg(w, cachedImage.([]byte))
+		sendJpeg(w, cachedImage)
 	} else {
 		origImage, err := api.imageDir.ReadImage(params.Get("image"))
 

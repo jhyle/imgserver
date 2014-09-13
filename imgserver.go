@@ -17,7 +17,7 @@ var (
 	portFlag *int = flag.Int("p", 3000, "port to listen on")
 	hostFlag *string = flag.String("i", "127.0.0.1", "interface to listen on")
 	imageDirFlag *string = flag.String("imageDir", "", "path to images")
-	cacheSizeFlag *int = flag.Int("cacheSize", 1024, "number of cached images")
+	cacheSizeFlag *uint64 = flag.Uint64("cacheSize", 1024 * 1024 * 1024 * 32, "maximum cache size in bytes")
 )
 
 func IsFolder(path string) bool {
