@@ -89,6 +89,7 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 		origImage, err := api.imageDir.ReadImage(params.Get("image"))
 
 		if err != nil {
+			traffic.Logger().Print(err.Error())
 			w.WriteHeader(http.StatusNotFound)
 
 		} else {
@@ -105,8 +106,8 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 			buffer := new(bytes.Buffer)
 			err = jpeg.Encode(buffer, sizedImage, &jpeg.Options{90})
 			if err != nil {
+				traffic.Logger().Print(err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
-				w.WriteText("500 jpeg encoder failed")
 			} else {
 				data := buffer.Bytes()
 				api.imageCache.Put(cacheKey, data)
@@ -126,6 +127,7 @@ func (api *ImgServerApi) uploadHandler(w traffic.ResponseWriter, r *traffic.Requ
 	} else {
 		err = api.imageDir.WriteImage(filename, uploadedImage, 90)
 		if err != nil {
+			traffic.Logger().Print(err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
 		} else {
 			w.WriteHeader(http.StatusOK)
@@ -140,6 +142,7 @@ func (api *ImgServerApi) deleteHandler(w traffic.ResponseWriter, r *traffic.Requ
 	api.imageCache.Remove(api.imageCache.FindKeys(filename))
 
 	if err != nil {
+		traffic.Logger().Print(err.Error())
 		w.WriteHeader(http.StatusNotFound)
 	} else {
 		w.WriteHeader(http.StatusOK)
