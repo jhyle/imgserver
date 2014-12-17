@@ -5,11 +5,12 @@ import (
 	"image/jpeg"
 	"io/ioutil"
 	"os"
+	"time"
 )
 
 type (
 	Directory interface {
-		ListFiles() ([]string, error)
+		ListFiles(minAge time.Duration) ([]string, error)
 		ReadFile(filename string) ([]byte, error)
 		ReadImage(filename string) (image.Image, error)
 		WriteFile(filename string, data []byte) error
@@ -33,16 +34,18 @@ func (dir *fsDirectory) GetBasePath() string {
 	return dir.basePath
 }
 
-func (dir *fsDirectory) ListFiles() ([]string, error) {
+func (dir *fsDirectory) ListFiles(minAge time.Duration) ([]string, error) {
 
 	fileInfos, err := ioutil.ReadDir(dir.basePath)
 	if err != nil {
 		return nil, err
 	}
 	
+	modTime := time.Now().Add(-minAge)
+	
 	files := make([]string, 0, len(fileInfos))
 	for _, fileInfo := range fileInfos {
-		if !fileInfo.IsDir() {
+		if !fileInfo.IsDir() && fileInfo.ModTime().Before(modTime) {
 			files = append(files, fileInfo.Name())
 		}
 	}

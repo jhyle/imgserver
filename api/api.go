@@ -10,6 +10,7 @@ import (
 	_ "image/png"
 	"net/http"
 	"strconv"
+	"time"
 )
 
 type (
@@ -156,7 +157,12 @@ func (api *ImgServerApi) statsHandler(w traffic.ResponseWriter, r *traffic.Reque
 
 func (api *ImgServerApi) listHandler(w traffic.ResponseWriter, r *traffic.Request) {
 
-	files, err := api.imageDir.ListFiles()
+	age, err := strconv.Atoi(r.Param("age"))
+	if err != nil {
+		age = 0
+	}
+	
+	files, err := api.imageDir.ListFiles(time.Duration(age) * time.Second)
 	if err != nil {
 		traffic.Logger().Print(err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
