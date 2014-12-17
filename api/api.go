@@ -152,14 +152,26 @@ func (api *ImgServerApi) deleteHandler(w traffic.ResponseWriter, r *traffic.Requ
 func (api *ImgServerApi) statsHandler(w traffic.ResponseWriter, r *traffic.Request) {
 
 	w.WriteJSON(api.imageCache.Stats())
-} 
+}
+
+func (api *ImgServerApi) listHandler(w traffic.ResponseWriter, r *traffic.Request) {
+
+	files, err := api.imageDir.ListFiles()
+	if err != nil {
+		traffic.Logger().Print(err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+	} else {
+		w.WriteJSON(files)
+	}
+}
 
 func (api *ImgServerApi) Start() {
 
 	traffic.SetHost(api.host)
 	traffic.SetPort(api.port)
 	router := traffic.New()
-	router.Get("/", api.statsHandler)
+	router.Get("/", api.listHandler)
+	router.Put("/", api.statsHandler)
 	router.Get("/:image", api.imageHandler)
 	router.Post("/:image", api.uploadHandler)
 	router.Delete("/:image", api.deleteHandler)

@@ -9,6 +9,7 @@ import (
 
 type (
 	Directory interface {
+		ListFiles() ([]string, error)
 		ReadFile(filename string) ([]byte, error)
 		ReadImage(filename string) (image.Image, error)
 		WriteFile(filename string, data []byte) error
@@ -30,6 +31,23 @@ func NewFsDirectory(basePath string) Directory {
 func (dir *fsDirectory) GetBasePath() string {
 
 	return dir.basePath
+}
+
+func (dir *fsDirectory) ListFiles() ([]string, error) {
+
+	fileInfos, err := ioutil.ReadDir(dir.basePath)
+	if err != nil {
+		return nil, err
+	}
+	
+	files := make([]string, 0, len(fileInfos))
+	for _, fileInfo := range fileInfos {
+		if !fileInfo.IsDir() {
+			files = append(files, fileInfo.Name())
+		}
+	}
+	
+	return files, nil
 }
 
 func (dir *fsDirectory) WriteFile(filename string, data []byte) error {
