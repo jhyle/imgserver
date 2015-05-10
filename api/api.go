@@ -107,7 +107,7 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 			}
 
 			buffer := new(bytes.Buffer)
-			err = jpeg.Encode(buffer, sizedImage, &jpeg.Options{90})
+			err = jpeg.Encode(buffer, sizedImage, &jpeg.Options{95})
 			if err != nil {
 				traffic.Logger().Print(err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
