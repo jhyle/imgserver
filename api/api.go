@@ -5,6 +5,8 @@ import (
 	"github.com/nfnt/resize"
 	"github.com/pilu/traffic"
 	"image"
+	"image/draw"
+	"image/color"
 	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
@@ -118,6 +120,14 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 	}
 }
 
+func drawWhiteBackground(input image.Image) image.Image {
+
+	img := image.NewRGBA(input.Bounds())
+	draw.Draw(img, img.Bounds(), &image.Uniform{color.White}, image.ZP, draw.Src)
+	draw.Draw(img, img.Bounds(), input, input.Bounds().Min, draw.Src)
+	return img
+}
+
 func (api *ImgServerApi) uploadHandler(w traffic.ResponseWriter, r *traffic.Request) {
 
 	filename := r.URL.Query().Get("image")
@@ -126,7 +136,8 @@ func (api *ImgServerApi) uploadHandler(w traffic.ResponseWriter, r *traffic.Requ
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 	} else {
-		err = api.imageDir.WriteImage(filename, uploadedImage, 90)
+		img := drawWhiteBackground(uploadedImage)
+		err = api.imageDir.WriteImage(filename, img, 100)
 		if err != nil {
 			traffic.Logger().Print(err.Error())
 			w.WriteHeader(http.StatusInternalServerError)
