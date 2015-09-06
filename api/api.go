@@ -5,8 +5,8 @@ import (
 	"github.com/nfnt/resize"
 	"github.com/pilu/traffic"
 	"image"
-	"image/draw"
 	"image/color"
+	"image/draw"
 	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
@@ -43,35 +43,6 @@ func toInt(input string, deflt int) int {
 	return result
 }
 
-func calcSize(paramWidth, paramHeight, origWidth, origHeight int) (uint, uint) {
-
-	if paramWidth > origWidth {
-		paramWidth = 0
-	}
-
-	if paramHeight > origHeight {
-		paramHeight = 0
-	}
-
-	if paramWidth <= 0 && paramHeight <= 0 {
-		return 0, 0
-	} else if paramHeight <= 0 {
-		return uint(paramWidth), 0
-	} else if paramWidth <= 0 {
-		return 0, uint(paramHeight)
-	} else {
-		widthScaling := float64(paramWidth) / float64(origWidth)
-		scaledHeight := widthScaling * float64(origHeight)
-		if int(scaledHeight) <= paramHeight {
-			return uint(paramWidth), uint(scaledHeight)
-		} else {
-			heightScaling := float64(paramHeight) / float64(origHeight)
-			scaledWidth := heightScaling * float64(origWidth)
-			return uint(scaledWidth), uint(paramHeight)
-		}
-	}
-}
-
 func sendJpeg(w traffic.ResponseWriter, data []byte) {
 
 	w.Header().Set("Content-Type", "image/jpeg")
@@ -97,11 +68,44 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 
 		} else {
 			var sizedImage image.Image
+			bounds := origImage.Bounds()
+			origWidth := bounds.Max.X - bounds.Min.X
+			origHeight := bounds.Max.Y - bounds.Min.Y
 
-			if width > 0 || height > 0 {
-				bounds := origImage.Bounds()
-				newWidth, newHeight := calcSize(width, height, bounds.Max.X-bounds.Min.X, bounds.Max.Y-bounds.Min.Y)
-				sizedImage = resize.Resize(newWidth, newHeight, origImage, resize.Lanczos3)
+			if width > 0 && height > 0 {
+				if width > origWidth && height > origHeight {
+					sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, 0), image.Pt((width-origWidth)/2, (height-origHeight)/2), origImage)
+				} else if width > origWidth {
+					sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, (origHeight-height)/2), image.Pt((width-origWidth)/2, 0), origImage)
+				} else if height > origHeight {
+					sizedImage = drawOnWhite(image.Pt(width, height), image.Pt((origWidth-width)/2, 0), image.Pt(0, (height-origHeight)/2), origImage)
+				} else {
+					origAspectRatio := float64(origWidth) / float64(origHeight)
+					croppedAspectRatio := float64(width) / float64(height)
+					if origAspectRatio < croppedAspectRatio {
+						scaling := float64(width) / float64(origWidth)
+						sizedImage = resize.Resize(uint(width), uint(float64(origHeight)*scaling), origImage, resize.Lanczos3)
+						sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, (sizedImage.Bounds().Dy()-height)/2), image.Pt(0, 0), sizedImage)
+					} else {
+						scaling := float64(height) / float64(origHeight)
+						sizedImage = resize.Resize(uint(float64(origWidth)*scaling), uint(height), origImage, resize.Lanczos3)
+						sizedImage = drawOnWhite(image.Pt(width, height), image.Pt((sizedImage.Bounds().Dx()-width)/2, 0), image.Pt(0, 0), sizedImage)
+					}
+				}
+			} else if width > 0 {
+				if width <= origWidth {
+					scaling := float64(width) / float64(origWidth)
+					sizedImage = resize.Resize(uint(width), uint(float64(origHeight)*scaling), origImage, resize.Lanczos3)
+				} else {
+					sizedImage = drawOnWhite(image.Pt(width, origHeight), image.Pt(0, 0), image.Pt((width-origWidth)/2, 0), origImage)
+				}
+			} else if height > 0 {
+				if height <= origHeight {
+					scaling := float64(height) / float64(origHeight)
+					sizedImage = resize.Resize(uint(float64(origWidth)*scaling), uint(height), origImage, resize.Lanczos3)
+				} else {
+					sizedImage = drawOnWhite(image.Pt(origWidth, height), image.Pt(0, 0), image.Pt(0, (height-origHeight)/2), origImage)
+				}
 			} else {
 				sizedImage = origImage
 			}
@@ -120,11 +124,11 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 	}
 }
 
-func drawWhiteBackground(input image.Image) image.Image {
+func drawOnWhite(size, srcOfs, dstOfs image.Point, input image.Image) image.Image {
 
-	img := image.NewRGBA(input.Bounds())
+	img := image.NewRGBA(image.Rect(0, 0, size.X, size.Y))
 	draw.Draw(img, img.Bounds(), &image.Uniform{color.White}, image.ZP, draw.Src)
-	draw.Draw(img, img.Bounds(), input, input.Bounds().Min, draw.Src)
+	draw.Draw(img, img.Bounds().Add(dstOfs), input, input.Bounds().Min.Add(srcOfs), draw.Over)
 	return img
 }
 
@@ -136,7 +140,7 @@ func (api *ImgServerApi) uploadHandler(w traffic.ResponseWriter, r *traffic.Requ
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 	} else {
-		img := drawWhiteBackground(uploadedImage)
+		img := drawOnWhite(uploadedImage.Bounds().Size(), image.Pt(0, 0), image.Pt(0, 0), uploadedImage)
 		err = api.imageDir.WriteImage(filename, img, 100)
 		if err != nil {
 			traffic.Logger().Print(err.Error())
@@ -172,7 +176,7 @@ func (api *ImgServerApi) listHandler(w traffic.ResponseWriter, r *traffic.Reques
 	if err != nil {
 		age = 0
 	}
-	
+
 	files, err := api.imageDir.ListFiles(time.Duration(age) * time.Second)
 	if err != nil {
 		traffic.Logger().Print(err.Error())
