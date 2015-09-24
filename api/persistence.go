@@ -17,6 +17,7 @@ type (
 		WriteImage(filename string, image image.Image, quality int) error
 		DeleteFile(filename string) error
 		GetBasePath() string
+		GetFilePath(string) string
 	}
 
 	fsDirectory struct {
@@ -53,14 +54,19 @@ func (dir *fsDirectory) ListFiles(minAge time.Duration) ([]string, error) {
 	return files, nil
 }
 
+func (dir *fsDirectory) GetFilePath(filename string) string {
+
+	return dir.basePath + string(os.PathSeparator) + filename
+}
+
 func (dir *fsDirectory) WriteFile(filename string, data []byte) error {
 
-	return ioutil.WriteFile(dir.basePath + string(os.PathSeparator) + filename, data, 0644)
+	return ioutil.WriteFile(dir.GetFilePath(filename), data, 0644)
 }
 
 func (dir *fsDirectory) WriteImage(filename string, image image.Image, quality int) error {
 
-	file, err := os.Create(dir.basePath + string(os.PathSeparator) + filename)
+	file, err := os.Create(dir.GetFilePath(filename))
 	if err != nil {
 		return err
 	}
@@ -78,12 +84,12 @@ func (dir *fsDirectory) WriteImage(filename string, image image.Image, quality i
 
 func (dir *fsDirectory) ReadFile(filename string) ([]byte, error) {
 
-	return ioutil.ReadFile(dir.basePath + string(os.PathSeparator) + filename)
+	return ioutil.ReadFile(dir.GetFilePath(filename))
 }
 
 func (dir *fsDirectory) ReadImage(filename string) (image.Image, error) {
 
-	file, err := os.Open(dir.basePath + string(os.PathSeparator) + filename)
+	file, err := os.Open(dir.GetFilePath(filename))
 	if err != nil {
 		return nil, err
 	}
@@ -96,5 +102,5 @@ func (dir *fsDirectory) ReadImage(filename string) (image.Image, error) {
 
 func (dir *fsDirectory) DeleteFile(filename string) error {
 
-	return os.Remove(dir.basePath + string(os.PathSeparator) + filename)
+	return os.Remove(dir.GetFilePath(filename))
 }

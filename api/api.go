@@ -2,6 +2,7 @@ package imgserver
 
 import (
 	"bytes"
+	"github.com/lazywei/go-opencv/opencv"
 	"github.com/nfnt/resize"
 	"github.com/pilu/traffic"
 	"image"
@@ -50,17 +51,47 @@ func sendJpeg(w traffic.ResponseWriter, data []byte) {
 	w.Write(data)
 }
 
+func (api *ImgServerApi) detectFaces(img image.Image) image.Rectangle {
+
+	cx, cy := img.Bounds().Max.X - img.Bounds().Min.X, img.Bounds().Max.Y - img.Bounds().Min.Y
+	center := image.Rect(cx, cy, cx, cy)
+	cascade := opencv.LoadHaarClassifierCascade("haarcascade_eye.xml")
+	faces := cascade.DetectObjects(opencv.FromImage(img))
+
+	for i, value := range faces {
+		if i == 0 {
+			center = image.Rect(value.X(), value.Y(), value.X() + value.Width(), value.Y() + value.Height())
+		} else {
+			if value.X() < center.Min.X {
+				center.Min.X = value.X()
+			}
+			if value.X() + value.Width() > center.Max.X {
+				center.Max.X = value.X() + value.Width()
+			}
+			if value.Y() < center.Min.Y {
+				center.Min.Y = value.Y()
+			}
+			if value.Y() + value.Height() > center.Max.Y {
+				center.Max.Y = value.Y() + value.Height()
+			}
+		}
+	}
+
+	return center
+}
+
 func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Request) {
 
 	params := r.URL.Query()
 	width := toInt(params.Get("width"), 0)
 	height := toInt(params.Get("height"), 0)
-	cacheKey := params.Get("image") + string(width) + string(height)
+	imagefile := params.Get("image")
+	cacheKey := imagefile + string(width) + string(height)
 
 	if cachedImage := api.imageCache.Get(cacheKey); cachedImage != nil {
 		sendJpeg(w, cachedImage)
 	} else {
-		origImage, err := api.imageDir.ReadImage(params.Get("image"))
+		origImage, err := api.imageDir.ReadImage(imagefile)
 
 		if err != nil {
 			traffic.Logger().Print(err.Error())
@@ -80,16 +111,52 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 				} else if height > origHeight {
 					sizedImage = drawOnWhite(image.Pt(width, height), image.Pt((origWidth-width)/2, 0), image.Pt(0, (height-origHeight)/2), origImage)
 				} else {
+					faces := api.detectFaces(origImage)
 					origAspectRatio := float64(origWidth) / float64(origHeight)
 					croppedAspectRatio := float64(width) / float64(height)
+
 					if origAspectRatio < croppedAspectRatio {
 						scaling := float64(width) / float64(origWidth)
 						sizedImage = resize.Resize(uint(width), uint(float64(origHeight)*scaling), origImage, resize.Lanczos3)
-						sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, (sizedImage.Bounds().Dy()-height)/2), image.Pt(0, 0), sizedImage)
+						
+						dY := (sizedImage.Bounds().Dy() - height) / 2
+						fY2 := int(float64(faces.Max.Y)*scaling) + int(float64(faces.Max.Y - faces.Min.Y)*scaling / 5)
+						if fY2 > sizedImage.Bounds().Dy() {
+							fY2 = sizedImage.Bounds().Dy()
+						}
+						if fY2 > dY + height {
+							dY = fY2 - height
+						}
+						fY1 := int(float64(faces.Min.Y)*scaling) - int(float64(faces.Max.Y - faces.Min.Y)*scaling / 5)
+						if fY1 < 0 {
+							fY1 = 0
+						}
+						if fY1 < dY {
+							dY = fY1
+						}
+						
+						sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, dY), image.Pt(0, 0), sizedImage)
 					} else {
 						scaling := float64(height) / float64(origHeight)
 						sizedImage = resize.Resize(uint(float64(origWidth)*scaling), uint(height), origImage, resize.Lanczos3)
-						sizedImage = drawOnWhite(image.Pt(width, height), image.Pt((sizedImage.Bounds().Dx()-width)/2, 0), image.Pt(0, 0), sizedImage)
+
+						dX := (sizedImage.Bounds().Dx() - width) / 2
+						fX2 := int(float64(faces.Max.X)*scaling) + int(float64(faces.Max.X - faces.Min.X)*scaling / 5)
+						if fX2 > sizedImage.Bounds().Dx() {
+							fX2 = sizedImage.Bounds().Dx()
+						}
+						if fX2 > dX + width {
+							dX = fX2 - width
+						}
+						fX1 := int(float64(faces.Min.X)*scaling) - int(float64(faces.Max.X - faces.Min.X)*scaling / 5)
+						if fX1 < 0 {
+							fX1 = 0
+						}
+						if fX1 < dX {
+							dX = fX1
+						}
+						
+						sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(dX, 0), image.Pt(0, 0), sizedImage)
 					}
 				}
 			} else if width > 0 {
