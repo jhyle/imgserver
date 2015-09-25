@@ -53,7 +53,7 @@ func sendJpeg(w traffic.ResponseWriter, data []byte) {
 
 func (api *ImgServerApi) detectFaces(img image.Image) image.Rectangle {
 
-	cx, cy := img.Bounds().Max.X - img.Bounds().Min.X, img.Bounds().Max.Y - img.Bounds().Min.Y
+	cx, cy := (img.Bounds().Max.X - img.Bounds().Min.X) / 2, (img.Bounds().Max.Y - img.Bounds().Min.Y) / 2
 	center := image.Rect(cx, cy, cx, cy)
 	cascade := opencv.LoadHaarClassifierCascade("haarcascade_eye.xml")
 	faces := cascade.DetectObjects(opencv.FromImage(img))
