@@ -55,11 +55,19 @@ func (api *ImgServerApi) detectFaces(img image.Image) image.Rectangle {
 
 	cx, cy := (img.Bounds().Max.X - img.Bounds().Min.X) / 2, (img.Bounds().Max.Y - img.Bounds().Min.Y) / 2
 	center := image.Rect(cx, cy, cx, cy)
+	srcImg := opencv.FromImage(img)
+	if srcImg == nil {
+		return center
+	}
+	defer srcImg.Release()
+	
 	cascade := opencv.LoadHaarClassifierCascade("/usr/share/opencv/haarcascades/haarcascade_profileface.xml")
-	faces := cascade.DetectObjects(opencv.FromImage(img))
+	if cascade == nil {
+		return center
+	}
+	defer cascade.Release()
 
-	for i, value := range faces {
-		traffic.Logger().Print(value)
+	for i, value := range cascade.DetectObjects(srcImg) {
 		if i == 0 {
 			center = image.Rect(value.X(), value.Y(), value.X() + value.Width(), value.Y() + value.Height())
 		} else {
@@ -113,7 +121,6 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 					sizedImage = drawOnWhite(image.Pt(width, height), image.Pt((origWidth-width)/2, 0), image.Pt(0, (height-origHeight)/2), origImage)
 				} else {
 					faces := api.detectFaces(origImage)
-					traffic.Logger().Print(faces)
 					origAspectRatio := float64(origWidth) / float64(origHeight)
 					croppedAspectRatio := float64(width) / float64(height)
 
