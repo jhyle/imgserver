@@ -55,18 +55,18 @@ func (api *ImgServerApi) detectFaces(img image.Image) image.Rectangle {
 
 	cx, cy := (img.Bounds().Max.X - img.Bounds().Min.X) / 2, (img.Bounds().Max.Y - img.Bounds().Min.Y) / 2
 	center := image.Rect(cx, cy, cx, cy)
-	srcImg := opencv.FromImage(img)
-	if srcImg == nil {
-		return center
-	}
-	defer srcImg.Release()
-	
+
 	cascade := opencv.LoadHaarClassifierCascade("/usr/share/opencv/haarcascades/haarcascade_profileface.xml")
 	if cascade == nil {
 		return center
 	}
-	defer cascade.Release()
 
+	srcImg := opencv.FromImage(img)
+	if srcImg == nil {
+		cascade.Release()
+		return center
+	}
+	
 	for i, value := range cascade.DetectObjects(srcImg) {
 		if i == 0 {
 			center = image.Rect(value.X(), value.Y(), value.X() + value.Width(), value.Y() + value.Height())
@@ -86,6 +86,8 @@ func (api *ImgServerApi) detectFaces(img image.Image) image.Rectangle {
 		}
 	}
 
+	cascade.Release()
+	srcImg.Release()
 	return center
 }
 
