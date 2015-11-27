@@ -67,21 +67,25 @@ func (api *ImgServerApi) detectFaces(img image.Image) image.Rectangle {
 		return center
 	}
 	
-	for i, value := range cascade.DetectObjects(srcImg) {
-		if i == 0 {
-			center = image.Rect(value.X(), value.Y(), value.X() + value.Width(), value.Y() + value.Height())
-		} else {
-			if value.X() < center.Min.X {
-				center.Min.X = value.X()
-			}
-			if value.X() + value.Width() > center.Max.X {
-				center.Max.X = value.X() + value.Width()
-			}
-			if value.Y() < center.Min.Y {
-				center.Min.Y = value.Y()
-			}
-			if value.Y() + value.Height() > center.Max.Y {
-				center.Max.Y = value.Y() + value.Height()
+	first := true;
+	for _, value := range cascade.DetectObjects(srcImg) {
+		if (value != nil) {
+			if first {
+				first = false
+				center = image.Rect(value.X(), value.Y(), value.X() + value.Width(), value.Y() + value.Height())
+			} else {
+				if value.X() < center.Min.X {
+					center.Min.X = value.X()
+				}
+				if value.X() + value.Width() > center.Max.X {
+					center.Max.X = value.X() + value.Width()
+				}
+				if value.Y() < center.Min.Y {
+					center.Min.Y = value.Y()
+				}
+				if value.Y() + value.Height() > center.Max.Y {
+					center.Max.Y = value.Y() + value.Height()
+				}
 			}
 		}
 	}
