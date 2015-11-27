@@ -49,6 +49,7 @@ func (cache *mapCache) removeKey(i int) {
 	cache.stats.Items--
 
 	delete(cache.m, cache.keys[i])
+	delete(cache.mods, cache.keys[i])
 	copy(cache.keys[i:], cache.keys[i+1:])
 	cache.keys = cache.keys[:len(cache.keys)-1]
 }

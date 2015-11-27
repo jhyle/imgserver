@@ -13,6 +13,7 @@ import (
 	_ "image/png"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -23,6 +24,10 @@ type (
 		imageDir   Directory
 		imageCache ByteCache
 	}
+)
+
+var (
+	mutex sync.Mutex
 )
 
 func NewImgServerApi(host string, port int, imageDir string, cacheSize uint64) ImgServerApi {
@@ -53,8 +58,10 @@ func sendJpeg(w traffic.ResponseWriter, data []byte) {
 
 func (api *ImgServerApi) detectFaces(img image.Image) image.Rectangle {
 
-	cx, cy := (img.Bounds().Max.X - img.Bounds().Min.X) / 2, (img.Bounds().Max.Y - img.Bounds().Min.Y) / 2
+	cx, cy := (img.Bounds().Max.X-img.Bounds().Min.X)/2, (img.Bounds().Max.Y-img.Bounds().Min.Y)/2
 	center := image.Rect(cx, cy, cx, cy)
+
+	mutex.Lock()
 
 	cascade := opencv.LoadHaarClassifierCascade("/usr/share/opencv/haarcascades/haarcascade_profileface.xml")
 	if cascade == nil {
@@ -64,26 +71,27 @@ func (api *ImgServerApi) detectFaces(img image.Image) image.Rectangle {
 	srcImg := opencv.FromImage(img)
 	if srcImg == nil {
 		cascade.Release()
+		mutex.Unlock()
 		return center
 	}
-	
-	first := true;
+
+	first := true
 	for _, value := range cascade.DetectObjects(srcImg) {
-		if (value != nil) {
+		if value != nil {
 			if first {
 				first = false
-				center = image.Rect(value.X(), value.Y(), value.X() + value.Width(), value.Y() + value.Height())
+				center = image.Rect(value.X(), value.Y(), value.X()+value.Width(), value.Y()+value.Height())
 			} else {
 				if value.X() < center.Min.X {
 					center.Min.X = value.X()
 				}
-				if value.X() + value.Width() > center.Max.X {
+				if value.X()+value.Width() > center.Max.X {
 					center.Max.X = value.X() + value.Width()
 				}
 				if value.Y() < center.Min.Y {
 					center.Min.Y = value.Y()
 				}
-				if value.Y() + value.Height() > center.Max.Y {
+				if value.Y()+value.Height() > center.Max.Y {
 					center.Max.Y = value.Y() + value.Height()
 				}
 			}
@@ -92,6 +100,7 @@ func (api *ImgServerApi) detectFaces(img image.Image) image.Rectangle {
 
 	cascade.Release()
 	srcImg.Release()
+	mutex.Unlock()
 	return center
 }
 
@@ -102,7 +111,7 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 	height := toInt(params.Get("height"), 0)
 	imagefile := params.Get("image")
 	cacheKey := imagefile + string(width) + string(height)
-	
+
 	modTime := api.imageDir.ModTime(imagefile)
 	if modTime == nil {
 		api.imageCache.Remove(api.imageCache.FindKeys(imagefile))
@@ -140,44 +149,44 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 					if origAspectRatio < croppedAspectRatio {
 						scaling := float64(width) / float64(origWidth)
 						sizedImage = resize.Resize(uint(width), uint(float64(origHeight)*scaling), origImage, resize.Lanczos3)
-						
+
 						dY := (sizedImage.Bounds().Dy() - height) / 2
-						fY2 := int(float64(faces.Max.Y)*scaling) + int(float64(faces.Max.Y - faces.Min.Y)*scaling / 5)
+						fY2 := int(float64(faces.Max.Y)*scaling) + int(float64(faces.Max.Y-faces.Min.Y)*scaling/5)
 						if fY2 > sizedImage.Bounds().Dy() {
 							fY2 = sizedImage.Bounds().Dy()
 						}
-						if fY2 > dY + height {
+						if fY2 > dY+height {
 							dY = fY2 - height
 						}
-						fY1 := int(float64(faces.Min.Y)*scaling) - int(float64(faces.Max.Y - faces.Min.Y)*scaling / 5)
+						fY1 := int(float64(faces.Min.Y)*scaling) - int(float64(faces.Max.Y-faces.Min.Y)*scaling/5)
 						if fY1 < 0 {
 							fY1 = 0
 						}
 						if fY1 < dY {
 							dY = fY1
 						}
-						
+
 						sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, dY), image.Pt(0, 0), sizedImage)
 					} else {
 						scaling := float64(height) / float64(origHeight)
 						sizedImage = resize.Resize(uint(float64(origWidth)*scaling), uint(height), origImage, resize.Lanczos3)
 
 						dX := (sizedImage.Bounds().Dx() - width) / 2
-						fX2 := int(float64(faces.Max.X)*scaling) + int(float64(faces.Max.X - faces.Min.X)*scaling / 5)
+						fX2 := int(float64(faces.Max.X)*scaling) + int(float64(faces.Max.X-faces.Min.X)*scaling/5)
 						if fX2 > sizedImage.Bounds().Dx() {
 							fX2 = sizedImage.Bounds().Dx()
 						}
-						if fX2 > dX + width {
+						if fX2 > dX+width {
 							dX = fX2 - width
 						}
-						fX1 := int(float64(faces.Min.X)*scaling) - int(float64(faces.Max.X - faces.Min.X)*scaling / 5)
+						fX1 := int(float64(faces.Min.X)*scaling) - int(float64(faces.Max.X-faces.Min.X)*scaling/5)
 						if fX1 < 0 {
 							fX1 = 0
 						}
 						if fX1 < dX {
 							dX = fX1
 						}
-						
+
 						sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(dX, 0), image.Pt(0, 0), sizedImage)
 					}
 				}
