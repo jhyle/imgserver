@@ -98,8 +98,15 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 	height := toInt(params.Get("height"), 0)
 	imagefile := params.Get("image")
 	cacheKey := imagefile + string(width) + string(height)
+	
+	modTime := api.imageDir.ModTime(imagefile)
+	if modTime == nil {
+		api.imageCache.Remove(api.imageCache.FindKeys(imagefile))
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
 
-	if cachedImage := api.imageCache.Get(cacheKey); cachedImage != nil {
+	if cachedImage := api.imageCache.Get(cacheKey, *modTime); cachedImage != nil {
 		sendJpeg(w, cachedImage)
 	} else {
 		origImage, err := api.imageDir.ReadImage(imagefile)
@@ -195,7 +202,7 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 				w.WriteHeader(http.StatusInternalServerError)
 			} else {
 				data := buffer.Bytes()
-				api.imageCache.Put(cacheKey, data)
+				api.imageCache.Put(cacheKey, data, *modTime)
 				sendJpeg(w, data)
 			}
 		}

@@ -18,6 +18,7 @@ type (
 		DeleteFile(filename string) error
 		GetBasePath() string
 		GetFilePath(string) string
+		ModTime(string) (*time.Time)
 	}
 
 	fsDirectory struct {
@@ -98,6 +99,17 @@ func (dir *fsDirectory) ReadImage(filename string) (image.Image, error) {
 	file.Close()
 
 	return image, err
+}
+
+func (dir *fsDirectory) ModTime(filename string) (*time.Time) {
+
+	fileInfo, err := os.Stat(dir.GetFilePath(filename))
+	if (err == nil) {
+		modTime := fileInfo.ModTime()
+		return &modTime
+	} else {
+		return nil
+	}
 }
 
 func (dir *fsDirectory) DeleteFile(filename string) error {

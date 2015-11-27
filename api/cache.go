@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"strings"
 	"sync"
+	"time"
 )
 
 type (
@@ -18,8 +19,8 @@ type (
 
 	ByteCache interface {
 		FindKeys(prefix string) []string
-		Put(key string, value []byte) []byte
-		Get(key string) []byte
+		Put(key string, value []byte, mod time.Time) []byte
+		Get(key string, mod time.Time) []byte
 		Remove(keys []string) [][]byte
 		Stats() CacheStats
 	}
@@ -27,6 +28,7 @@ type (
 	mapCache struct {
 		sync.RWMutex
 		keys  []string
+		mods  map[string]time.Time
 		m     map[string][]byte
 		max   uint64
 		stats CacheStats
@@ -35,7 +37,7 @@ type (
 
 func NewByteCache(capacity uint64) ByteCache {
 
-	return &mapCache{m: make(map[string][]byte), max: capacity}
+	return &mapCache{m: make(map[string][]byte), mods: make(map[string]time.Time), max: capacity}
 }
 
 func (cache *mapCache) removeKey(i int) {
@@ -51,7 +53,7 @@ func (cache *mapCache) removeKey(i int) {
 	cache.keys = cache.keys[:len(cache.keys)-1]
 }
 
-func (cache *mapCache) Put(key string, value []byte) []byte {
+func (cache *mapCache) Put(key string, value []byte, mod time.Time) []byte {
 
 	if uint64(len(value)) > cache.max {
 		return nil
@@ -78,23 +80,28 @@ func (cache *mapCache) Put(key string, value []byte) []byte {
 	}
 
 	cache.m[key] = value
-	cache.stats.Puts++
 	cache.stats.Size += uint64(neededCapacity)
 
+	cache.mods[key] = mod;
 	cache.Unlock()
+	cache.stats.Puts++
 	return oldValue
 }
 
-func (cache *mapCache) Get(key string) []byte {
+func (cache *mapCache) Get(key string, mod time.Time) []byte {
 
-	cache.RLock()
-
+	var item []byte = nil;
 	cache.stats.Gets++
-	item := cache.m[key]
-	if item != nil {
-		cache.stats.Hits++
+	cache.RLock()
+	
+	cachedMod := cache.mods[key]
+	if cachedMod.Equal(mod) {
+		item = cache.m[key]
+		if item != nil {
+			cache.stats.Hits++
+		} 
 	}
-
+	
 	cache.RUnlock()
 	return item
 }
