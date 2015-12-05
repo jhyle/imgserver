@@ -12,6 +12,7 @@ import (
 	"image/jpeg"
 	_ "image/png"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"time"
@@ -26,8 +27,13 @@ type (
 	}
 )
 
+const (
+	haarCascade = "/usr/share/opencv/haarcascades/haarcascade_profileface.xml"
+)
+
 var (
-	mutex sync.Mutex
+	mutex   sync.Mutex
+	cascade *opencv.HaarCascade
 )
 
 func NewImgServerApi(host string, port int, imageDir string, cacheSize uint64) ImgServerApi {
@@ -56,24 +62,19 @@ func sendJpeg(w traffic.ResponseWriter, data []byte) {
 	w.Write(data)
 }
 
-func (api *ImgServerApi) detectFaces(img image.Image) image.Rectangle {
+func detectFaces(img image.Image) (center image.Rectangle) {
 
 	cx, cy := (img.Bounds().Max.X-img.Bounds().Min.X)/2, (img.Bounds().Max.Y-img.Bounds().Min.Y)/2
-	center := image.Rect(cx, cy, cx, cy)
-
-	mutex.Lock()
-
-	cascade := opencv.LoadHaarClassifierCascade("/usr/share/opencv/haarcascades/haarcascade_profileface.xml")
-	if cascade == nil {
-		return center
-	}
+	center = image.Rect(cx, cy, cx, cy)
 
 	srcImg := opencv.FromImage(img)
 	if srcImg == nil {
-		cascade.Release()
-		mutex.Unlock()
-		return center
+		return
 	}
+	defer srcImg.Release()
+
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	first := true
 	for _, value := range cascade.DetectObjects(srcImg) {
@@ -98,10 +99,7 @@ func (api *ImgServerApi) detectFaces(img image.Image) image.Rectangle {
 		}
 	}
 
-	cascade.Release()
-	srcImg.Release()
-	mutex.Unlock()
-	return center
+	return
 }
 
 func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Request) {
@@ -142,7 +140,7 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 				} else if height > origHeight {
 					sizedImage = drawOnWhite(image.Pt(width, height), image.Pt((origWidth-width)/2, 0), image.Pt(0, (height-origHeight)/2), origImage)
 				} else {
-					faces := api.detectFaces(origImage)
+					faces := detectFaces(origImage)
 					origAspectRatio := float64(origWidth) / float64(origHeight)
 					croppedAspectRatio := float64(width) / float64(height)
 
@@ -295,4 +293,12 @@ func (api *ImgServerApi) Start() {
 	router.Post("/:image", api.uploadHandler)
 	router.Delete("/:image", api.deleteHandler)
 	router.Run()
+}
+
+func init() {
+
+	if _, err := os.Stat(haarCascade); os.IsNotExist(err) {
+		panic(haarCascade + " not found")
+	}
+	cascade = opencv.LoadHaarClassifierCascade(haarCascade)
 }

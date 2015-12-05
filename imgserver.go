@@ -7,6 +7,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"runtime"
 )
 
 const (
@@ -19,7 +20,7 @@ var (
 	portFlag      *int    = flag.Int("p", 3000, "port to listen on")
 	hostFlag      *string = flag.String("i", "127.0.0.1", "interface to listen on")
 	imageDirFlag  *string = flag.String("imageDir", "", "path to images")
-	cacheSizeFlag *uint64 = flag.Uint64("cacheSize", 1024*1024*1024*32, "maximum cache size in bytes")
+	cacheSizeFlag *uint64 = flag.Uint64("cacheSize", 1024*1024*32, "maximum cache size in bytes")
 )
 
 func IsFolder(path string) bool {
@@ -48,6 +49,8 @@ func main() {
 		fmt.Println("Given image directory (-imageDir=" + *imageDirFlag + ") is not a directory!")
 		os.Exit(1)
 	}
+
+	runtime.GOMAXPROCS(runtime.NumCPU() * 2)
 
 	// start debugging server
 	go func() {
