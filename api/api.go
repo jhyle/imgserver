@@ -247,6 +247,27 @@ func (api *ImgServerApi) uploadHandler(w traffic.ResponseWriter, r *traffic.Requ
 	}
 }
 
+func (api *ImgServerApi) copyHandler(w traffic.ResponseWriter, r *traffic.Request) {
+
+	src := r.URL.Query().Get("src")
+	dst := r.URL.Query().Get("dst")
+
+	data, err := api.imageDir.ReadFile(src)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	
+	err = api.imageDir.WriteFile(dst, data);
+	if err != nil {
+		traffic.Logger().Print(err.Error())
+		w.WriteHeader(http.StatusInternalServerError);
+		return
+	}
+	
+	w.WriteHeader(http.StatusOK)
+}
+
 func (api *ImgServerApi) deleteHandler(w traffic.ResponseWriter, r *traffic.Request) {
 
 	filename := r.URL.Query().Get("image")
@@ -291,6 +312,7 @@ func (api *ImgServerApi) Start() {
 	router.Put("/", api.statsHandler)
 	router.Get("/:image", api.imageHandler)
 	router.Post("/:image", api.uploadHandler)
+	router.Put("/:src/:dst", api.copyHandler)
 	router.Delete("/:image", api.deleteHandler)
 	router.Run()
 }

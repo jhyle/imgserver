@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-func TestXYZ(t *testing.T) {
+func TestImgServer(t *testing.T) {
 
 	tmpPath, err := ioutil.TempDir("", "imgserver")
 	if err != nil {
@@ -31,10 +31,17 @@ func TestXYZ(t *testing.T) {
 
 	buffer := new(bytes.Buffer)
 	baseUrl := "http://localhost:3030/"
-	url := baseUrl + "test.jpg"
+	filename := "test.jpg"
+	url := baseUrl + filename
 	rgba := image.NewRGBA(image.Rect(0, 0, 100, 200))
 	jpeg.Encode(buffer, rgba, &jpeg.Options{90})
-	http.Post(url, "image/jpeg", buffer)
+	resp, err := http.Post(url, "image/jpeg", buffer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("POST returned " + strconv.Itoa(resp.StatusCode))
+	}
 
 	var wait sync.WaitGroup
 	wait.Add(100)
@@ -62,7 +69,7 @@ func TestXYZ(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err = http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,6 +82,42 @@ func TestXYZ(t *testing.T) {
 		} else {
 			t.Log(string(data[:]))
 		}
+	}
+
+	filenameCopy := "test2.jpg"
+	req, err = http.NewRequest("PUT", url + "/" + filenameCopy, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("PUT returned " + strconv.Itoa(resp.StatusCode))
+	}
+
+	urlCopy := baseUrl + filenameCopy
+	resp, err = http.Get(urlCopy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("GET returned " + strconv.Itoa(resp.StatusCode))
+	}
+	
+	req, err = http.NewRequest("DELETE", urlCopy, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatal("DELETE returned " + strconv.Itoa(resp.StatusCode))
 	}
 
 	req, err = http.NewRequest("DELETE", url, nil)
