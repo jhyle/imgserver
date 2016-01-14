@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+	"runtime"
 )
 
 type (
@@ -34,6 +35,7 @@ const (
 var (
 	mutex   sync.Mutex
 	cascade *opencv.HaarCascade
+	semaphore chan struct {}
 )
 
 func NewImgServerApi(host string, port int, imageDir string, cacheSize uint64) ImgServerApi {
@@ -102,6 +104,90 @@ func detectFaces(img image.Image) (center image.Rectangle) {
 	return
 }
 
+func resizeImage(origImage image.Image, width, height int) (image.Image) {
+
+	var sizedImage image.Image
+	bounds := origImage.Bounds()
+	origWidth := bounds.Max.X - bounds.Min.X
+	origHeight := bounds.Max.Y - bounds.Min.Y
+
+	if width > 0 && height > 0 {
+		if width > origWidth && height > origHeight {
+			sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, 0), image.Pt((width-origWidth)/2, (height-origHeight)/2), origImage)
+		} else if width > origWidth {
+			sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, (origHeight-height)/2), image.Pt((width-origWidth)/2, 0), origImage)
+		} else if height > origHeight {
+			sizedImage = drawOnWhite(image.Pt(width, height), image.Pt((origWidth-width)/2, 0), image.Pt(0, (height-origHeight)/2), origImage)
+		} else {
+			faces := detectFaces(origImage)
+			origAspectRatio := float64(origWidth) / float64(origHeight)
+			croppedAspectRatio := float64(width) / float64(height)
+
+			if origAspectRatio < croppedAspectRatio {
+				scaling := float64(width) / float64(origWidth)
+				sizedImage = resize.Resize(uint(width), uint(float64(origHeight)*scaling), origImage, resize.Lanczos3)
+
+				dY := (sizedImage.Bounds().Dy() - height) / 2
+				fY2 := int(float64(faces.Max.Y)*scaling) + int(float64(faces.Max.Y-faces.Min.Y)*scaling/5)
+				if fY2 > sizedImage.Bounds().Dy() {
+					fY2 = sizedImage.Bounds().Dy()
+				}
+				if fY2 > dY+height {
+					dY = fY2 - height
+				}
+				fY1 := int(float64(faces.Min.Y)*scaling) - int(float64(faces.Max.Y-faces.Min.Y)*scaling/5)
+				if fY1 < 0 {
+					fY1 = 0
+				}
+				if fY1 < dY {
+					dY = fY1
+				}
+
+				sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, dY), image.Pt(0, 0), sizedImage)
+			} else {
+				scaling := float64(height) / float64(origHeight)
+				sizedImage = resize.Resize(uint(float64(origWidth)*scaling), uint(height), origImage, resize.Lanczos3)
+
+				dX := (sizedImage.Bounds().Dx() - width) / 2
+				fX2 := int(float64(faces.Max.X)*scaling) + int(float64(faces.Max.X-faces.Min.X)*scaling/5)
+				if fX2 > sizedImage.Bounds().Dx() {
+					fX2 = sizedImage.Bounds().Dx()
+				}
+				if fX2 > dX+width {
+					dX = fX2 - width
+				}
+				fX1 := int(float64(faces.Min.X)*scaling) - int(float64(faces.Max.X-faces.Min.X)*scaling/5)
+				if fX1 < 0 {
+					fX1 = 0
+				}
+				if fX1 < dX {
+					dX = fX1
+				}
+
+				sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(dX, 0), image.Pt(0, 0), sizedImage)
+			}
+		}
+	} else if width > 0 {
+		if width <= origWidth {
+			scaling := float64(width) / float64(origWidth)
+			sizedImage = resize.Resize(uint(width), uint(float64(origHeight)*scaling), origImage, resize.Lanczos3)
+		} else {
+			sizedImage = drawOnWhite(image.Pt(width, origHeight), image.Pt(0, 0), image.Pt((width-origWidth)/2, 0), origImage)
+		}
+	} else if height > 0 {
+		if height <= origHeight {
+			scaling := float64(height) / float64(origHeight)
+			sizedImage = resize.Resize(uint(float64(origWidth)*scaling), uint(height), origImage, resize.Lanczos3)
+		} else {
+			sizedImage = drawOnWhite(image.Pt(origWidth, height), image.Pt(0, 0), image.Pt(0, (height-origHeight)/2), origImage)
+		}
+	} else {
+		sizedImage = origImage
+	}
+	
+	return sizedImage
+}
+
 func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Request) {
 
 	params := r.URL.Query()
@@ -120,93 +206,14 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 	if cachedImage := api.imageCache.Get(cacheKey, *modTime); cachedImage != nil {
 		sendJpeg(w, cachedImage)
 	} else {
+		semaphore <- struct{}{}
 		origImage, err := api.imageDir.ReadImage(imagefile)
-
 		if err != nil {
 			traffic.Logger().Print(err.Error())
 			w.WriteHeader(http.StatusNotFound)
-
 		} else {
-			var sizedImage image.Image
-			bounds := origImage.Bounds()
-			origWidth := bounds.Max.X - bounds.Min.X
-			origHeight := bounds.Max.Y - bounds.Min.Y
-
-			if width > 0 && height > 0 {
-				if width > origWidth && height > origHeight {
-					sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, 0), image.Pt((width-origWidth)/2, (height-origHeight)/2), origImage)
-				} else if width > origWidth {
-					sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, (origHeight-height)/2), image.Pt((width-origWidth)/2, 0), origImage)
-				} else if height > origHeight {
-					sizedImage = drawOnWhite(image.Pt(width, height), image.Pt((origWidth-width)/2, 0), image.Pt(0, (height-origHeight)/2), origImage)
-				} else {
-					faces := detectFaces(origImage)
-					origAspectRatio := float64(origWidth) / float64(origHeight)
-					croppedAspectRatio := float64(width) / float64(height)
-
-					if origAspectRatio < croppedAspectRatio {
-						scaling := float64(width) / float64(origWidth)
-						sizedImage = resize.Resize(uint(width), uint(float64(origHeight)*scaling), origImage, resize.Lanczos3)
-
-						dY := (sizedImage.Bounds().Dy() - height) / 2
-						fY2 := int(float64(faces.Max.Y)*scaling) + int(float64(faces.Max.Y-faces.Min.Y)*scaling/5)
-						if fY2 > sizedImage.Bounds().Dy() {
-							fY2 = sizedImage.Bounds().Dy()
-						}
-						if fY2 > dY+height {
-							dY = fY2 - height
-						}
-						fY1 := int(float64(faces.Min.Y)*scaling) - int(float64(faces.Max.Y-faces.Min.Y)*scaling/5)
-						if fY1 < 0 {
-							fY1 = 0
-						}
-						if fY1 < dY {
-							dY = fY1
-						}
-
-						sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, dY), image.Pt(0, 0), sizedImage)
-					} else {
-						scaling := float64(height) / float64(origHeight)
-						sizedImage = resize.Resize(uint(float64(origWidth)*scaling), uint(height), origImage, resize.Lanczos3)
-
-						dX := (sizedImage.Bounds().Dx() - width) / 2
-						fX2 := int(float64(faces.Max.X)*scaling) + int(float64(faces.Max.X-faces.Min.X)*scaling/5)
-						if fX2 > sizedImage.Bounds().Dx() {
-							fX2 = sizedImage.Bounds().Dx()
-						}
-						if fX2 > dX+width {
-							dX = fX2 - width
-						}
-						fX1 := int(float64(faces.Min.X)*scaling) - int(float64(faces.Max.X-faces.Min.X)*scaling/5)
-						if fX1 < 0 {
-							fX1 = 0
-						}
-						if fX1 < dX {
-							dX = fX1
-						}
-
-						sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(dX, 0), image.Pt(0, 0), sizedImage)
-					}
-				}
-			} else if width > 0 {
-				if width <= origWidth {
-					scaling := float64(width) / float64(origWidth)
-					sizedImage = resize.Resize(uint(width), uint(float64(origHeight)*scaling), origImage, resize.Lanczos3)
-				} else {
-					sizedImage = drawOnWhite(image.Pt(width, origHeight), image.Pt(0, 0), image.Pt((width-origWidth)/2, 0), origImage)
-				}
-			} else if height > 0 {
-				if height <= origHeight {
-					scaling := float64(height) / float64(origHeight)
-					sizedImage = resize.Resize(uint(float64(origWidth)*scaling), uint(height), origImage, resize.Lanczos3)
-				} else {
-					sizedImage = drawOnWhite(image.Pt(origWidth, height), image.Pt(0, 0), image.Pt(0, (height-origHeight)/2), origImage)
-				}
-			} else {
-				sizedImage = origImage
-			}
-
 			buffer := new(bytes.Buffer)
+			sizedImage := resizeImage(origImage, width, height)
 			err = jpeg.Encode(buffer, sizedImage, &jpeg.Options{95})
 			if err != nil {
 				traffic.Logger().Print(err.Error())
@@ -217,6 +224,7 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 				sendJpeg(w, data)
 			}
 		}
+		<- semaphore
 	}
 }
 
@@ -323,4 +331,5 @@ func init() {
 		panic(haarCascade + " not found")
 	}
 	cascade = opencv.LoadHaarClassifierCascade(haarCascade)
+	semaphore = make(chan struct {}, runtime.NumCPU());
 }
