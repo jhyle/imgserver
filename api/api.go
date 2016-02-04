@@ -25,6 +25,7 @@ type (
 		port       int
 		imageDir   Directory
 		imageCache ByteCache
+		faceDetection bool
 	}
 )
 
@@ -38,9 +39,9 @@ var (
 	semaphore chan struct {}
 )
 
-func NewImgServerApi(host string, port int, imageDir string, cacheSize uint64) ImgServerApi {
+func NewImgServerApi(host string, port int, imageDir string, cacheSize uint64, disableFaceDetection bool) ImgServerApi {
 
-	return ImgServerApi{host, port, NewFsDirectory(imageDir), NewByteCache(cacheSize)}
+	return ImgServerApi{host, port, NewFsDirectory(imageDir), NewByteCache(cacheSize), !disableFaceDetection}
 }
 
 func toInt(input string, deflt int) int {
@@ -104,7 +105,7 @@ func detectFaces(img image.Image) (center image.Rectangle) {
 	return
 }
 
-func resizeImage(origImage image.Image, width, height int) (image.Image) {
+func resizeImage(origImage image.Image, width, height int, faceDetection bool) (image.Image) {
 
 	var sizedImage image.Image
 	bounds := origImage.Bounds()
@@ -119,7 +120,10 @@ func resizeImage(origImage image.Image, width, height int) (image.Image) {
 		} else if height > origHeight {
 			sizedImage = drawOnWhite(image.Pt(width, height), image.Pt((origWidth-width)/2, 0), image.Pt(0, (height-origHeight)/2), origImage)
 		} else {
-			faces := detectFaces(origImage)
+			faces := origImage.Bounds();
+			if faceDetection {
+				faces = detectFaces(origImage)
+			}
 			origAspectRatio := float64(origWidth) / float64(origHeight)
 			croppedAspectRatio := float64(width) / float64(height)
 
@@ -213,7 +217,7 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 			w.WriteHeader(http.StatusNotFound)
 		} else {
 			buffer := new(bytes.Buffer)
-			sizedImage := resizeImage(origImage, width, height)
+			sizedImage := resizeImage(origImage, width, height, api.faceDetection)
 			err = jpeg.Encode(buffer, sizedImage, &jpeg.Options{95})
 			if err != nil {
 				traffic.Logger().Print(err.Error())
