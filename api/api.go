@@ -210,25 +210,26 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 	if cachedImage := api.imageCache.Get(cacheKey, *modTime); cachedImage != nil {
 		sendJpeg(w, cachedImage)
 	} else {
-		semaphore <- struct{}{}
 		origImage, err := api.imageDir.ReadImage(imagefile)
 		if err != nil {
 			traffic.Logger().Print(err.Error())
 			w.WriteHeader(http.StatusNotFound)
 		} else {
+			semaphore <- struct{}{}
 			buffer := new(bytes.Buffer)
 			sizedImage := resizeImage(origImage, width, height, api.faceDetection)
 			err = jpeg.Encode(buffer, sizedImage, &jpeg.Options{95})
+			<- semaphore
 			if err != nil {
 				traffic.Logger().Print(err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
 			} else {
-				data := buffer.Bytes()
+				data := make([]byte, buffer.Len())
+				buffer.Read(data)
 				api.imageCache.Put(cacheKey, data, *modTime)
 				sendJpeg(w, data)
 			}
 		}
-		<- semaphore
 	}
 }
 
