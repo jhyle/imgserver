@@ -120,10 +120,6 @@ func resizeImage(origImage image.Image, width, height int, faceDetection bool) (
 		} else if height > origHeight {
 			sizedImage = drawOnWhite(image.Pt(width, height), image.Pt((origWidth-width)/2, 0), image.Pt(0, (height-origHeight)/2), origImage)
 		} else {
-			faces := origImage.Bounds();
-			if faceDetection {
-				faces = detectFaces(origImage)
-			}
 			origAspectRatio := float64(origWidth) / float64(origHeight)
 			croppedAspectRatio := float64(width) / float64(height)
 
@@ -132,19 +128,22 @@ func resizeImage(origImage image.Image, width, height int, faceDetection bool) (
 				sizedImage = resize.Resize(uint(width), uint(float64(origHeight)*scaling), origImage, resize.Lanczos3)
 
 				dY := (sizedImage.Bounds().Dy() - height) / 2
-				fY2 := int(float64(faces.Max.Y)*scaling) + int(float64(faces.Max.Y-faces.Min.Y)*scaling/5)
-				if fY2 > sizedImage.Bounds().Dy() {
-					fY2 = sizedImage.Bounds().Dy()
-				}
-				if fY2 > dY+height {
-					dY = fY2 - height
-				}
-				fY1 := int(float64(faces.Min.Y)*scaling) - int(float64(faces.Max.Y-faces.Min.Y)*scaling/5)
-				if fY1 < 0 {
-					fY1 = 0
-				}
-				if fY1 < dY {
-					dY = fY1
+				if faceDetection {
+					faces := detectFaces(origImage)
+					fY2 := int(float64(faces.Max.Y)*scaling) + int(float64(faces.Max.Y-faces.Min.Y)*scaling/5)
+					if fY2 > sizedImage.Bounds().Dy() {
+						fY2 = sizedImage.Bounds().Dy()
+					}
+					if fY2 > dY+height {
+						dY = fY2 - height
+					}
+					fY1 := int(float64(faces.Min.Y)*scaling) - int(float64(faces.Max.Y-faces.Min.Y)*scaling/5)
+					if fY1 < 0 {
+						fY1 = 0
+					}
+					if fY1 < dY {
+						dY = fY1
+					}
 				}
 
 				sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, dY), image.Pt(0, 0), sizedImage)
@@ -153,19 +152,22 @@ func resizeImage(origImage image.Image, width, height int, faceDetection bool) (
 				sizedImage = resize.Resize(uint(float64(origWidth)*scaling), uint(height), origImage, resize.Lanczos3)
 
 				dX := (sizedImage.Bounds().Dx() - width) / 2
-				fX2 := int(float64(faces.Max.X)*scaling) + int(float64(faces.Max.X-faces.Min.X)*scaling/5)
-				if fX2 > sizedImage.Bounds().Dx() {
-					fX2 = sizedImage.Bounds().Dx()
-				}
-				if fX2 > dX+width {
-					dX = fX2 - width
-				}
-				fX1 := int(float64(faces.Min.X)*scaling) - int(float64(faces.Max.X-faces.Min.X)*scaling/5)
-				if fX1 < 0 {
-					fX1 = 0
-				}
-				if fX1 < dX {
-					dX = fX1
+				if faceDetection {
+					faces := detectFaces(origImage)
+					fX2 := int(float64(faces.Max.X)*scaling) + int(float64(faces.Max.X-faces.Min.X)*scaling/5)
+					if fX2 > sizedImage.Bounds().Dx() {
+						fX2 = sizedImage.Bounds().Dx()
+					}
+					if fX2 > dX+width {
+						dX = fX2 - width
+					}
+					fX1 := int(float64(faces.Min.X)*scaling) - int(float64(faces.Max.X-faces.Min.X)*scaling/5)
+					if fX1 < 0 {
+						fX1 = 0
+					}
+					if fX1 < dX {
+						dX = fX1
+					}
 				}
 
 				sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(dX, 0), image.Pt(0, 0), sizedImage)
