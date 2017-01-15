@@ -245,6 +245,7 @@ func drawOnWhite(size, srcOfs, dstOfs image.Point, input image.Image) image.Imag
 
 func (api *ImgServerApi) uploadHandler(w traffic.ResponseWriter, r *traffic.Request) {
 
+	semaphore <- struct{}{}
 	filename := r.URL.Query().Get("image")
 	uploadedImage, _, err := image.Decode(r.Body)
 
@@ -260,6 +261,7 @@ func (api *ImgServerApi) uploadHandler(w traffic.ResponseWriter, r *traffic.Requ
 			w.WriteHeader(http.StatusOK)
 		}
 	}
+	<- semaphore
 }
 
 func (api *ImgServerApi) copyHandler(w traffic.ResponseWriter, r *traffic.Request) {
