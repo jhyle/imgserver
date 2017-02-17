@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-	"runtime"
 )
 
 type (
@@ -25,6 +24,7 @@ type (
 		port       int
 		imageDir   Directory
 		imageCache ByteCache
+		semaphore  chan struct {}
 		faceDetection bool
 	}
 )
@@ -36,12 +36,12 @@ const (
 var (
 	mutex   sync.Mutex
 	cascade *opencv.HaarCascade
-	semaphore chan struct {}
 )
 
-func NewImgServerApi(host string, port int, imageDir string, cacheSize uint64, disableFaceDetection bool) ImgServerApi {
+func NewImgServerApi(host string, port int, imageDir string, cacheSize uint64, concurrency int, faceDetection bool) ImgServerApi {
 
-	return ImgServerApi{host, port, NewFsDirectory(imageDir), NewByteCache(cacheSize), !disableFaceDetection}
+	semaphore := make(chan struct {}, concurrency);
+	return ImgServerApi{host, port, NewFsDirectory(imageDir), NewByteCache(cacheSize), semaphore, faceDetection}
 }
 
 func toInt(input string, deflt int) int {
@@ -217,11 +217,11 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 			traffic.Logger().Print(err.Error())
 			w.WriteHeader(http.StatusNotFound)
 		} else {
-			semaphore <- struct{}{}
+			api.semaphore <- struct{}{}
 			buffer := new(bytes.Buffer)
 			sizedImage := resizeImage(origImage, width, height, api.faceDetection)
 			err = jpeg.Encode(buffer, sizedImage, &jpeg.Options{95})
-			<- semaphore
+			<- api.semaphore
 			if err != nil {
 				traffic.Logger().Print(err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
@@ -245,7 +245,7 @@ func drawOnWhite(size, srcOfs, dstOfs image.Point, input image.Image) image.Imag
 
 func (api *ImgServerApi) uploadHandler(w traffic.ResponseWriter, r *traffic.Request) {
 
-	semaphore <- struct{}{}
+	api.semaphore <- struct{}{}
 	filename := r.URL.Query().Get("image")
 	uploadedImage, _, err := image.Decode(r.Body)
 
@@ -261,7 +261,7 @@ func (api *ImgServerApi) uploadHandler(w traffic.ResponseWriter, r *traffic.Requ
 			w.WriteHeader(http.StatusOK)
 		}
 	}
-	<- semaphore
+	<- api.semaphore
 }
 
 func (api *ImgServerApi) copyHandler(w traffic.ResponseWriter, r *traffic.Request) {
@@ -340,5 +340,4 @@ func init() {
 		panic(haarCascade + " not found")
 	}
 	cascade = opencv.LoadHaarClassifierCascade(haarCascade)
-	semaphore = make(chan struct {}, runtime.NumCPU());
 }

@@ -84,16 +84,16 @@ func (cache *mapCache) Put(key string, value []byte, mod time.Time) []byte {
 	cache.stats.Size += uint64(neededCapacity)
 
 	cache.mods[key] = mod;
-	cache.Unlock()
 	cache.stats.Puts++
+	cache.Unlock()
 	return oldValue
 }
 
 func (cache *mapCache) Get(key string, mod time.Time) []byte {
 
 	var item []byte = nil;
-	cache.stats.Gets++
 	cache.RLock()
+	cache.stats.Gets++
 	
 	cachedMod := cache.mods[key]
 	if cachedMod.Equal(mod) {
@@ -109,8 +109,8 @@ func (cache *mapCache) Get(key string, mod time.Time) []byte {
 
 func (cache *mapCache) Remove(keys []string) [][]byte {
 
-	cache.Lock()
 	var oldValues = make([][]byte, len(keys), len(keys))
+	cache.Lock()
 
 	for n := 0; n < len(keys); n++ {
 		key := keys[n]
@@ -131,8 +131,8 @@ func (cache *mapCache) Remove(keys []string) [][]byte {
 
 func (cache *mapCache) FindKeys(prefix string) []string {
 
-	cache.RLock()
 	keys := make([]string, 0, 4)
+	cache.RLock()
 
 	for i := 0; i < len(cache.keys); i++ {
 		if strings.HasPrefix(cache.keys[i], prefix) {

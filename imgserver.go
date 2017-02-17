@@ -16,12 +16,13 @@ const (
 
 // The flag package provides a default help printer via -h switch
 var (
-	versionFlag              *bool   = flag.Bool("v", false, "print the version number")
-	portFlag                 *int    = flag.Int("p", 3000, "port to listen on")
-	hostFlag                 *string = flag.String("i", "127.0.0.1", "interface to listen on")
-	imageDirFlag             *string = flag.String("imageDir", "", "path to images")
-	cacheSizeFlag            *uint64 = flag.Uint64("cacheSize", 1024*1024*32, "maximum cache size in bytes")
-	disableFaceDetectionFlag *bool   = flag.Bool("df", false, "disable face detection")
+	versionFlag       *bool   = flag.Bool("v", false, "print the version number")
+	portFlag          *int    = flag.Int("p", 3000, "port to listen on")
+	hostFlag          *string = flag.String("i", "127.0.0.1", "interface to listen on")
+	imageDirFlag      *string = flag.String("imageDir", "", "path to images")
+	cacheSizeFlag     *uint64 = flag.Uint64("cacheSize", 1024*1024*32, "maximum cache size in bytes")
+	concurrencyFlag   *int    = flag.Int("concurrency", 2, "maximum number of parallel workers")
+	faceDetectionFlag *bool   = flag.Bool("faceDetection", false, "use face detection for clipping")
 )
 
 func IsFolder(path string) bool {
@@ -58,6 +59,6 @@ func main() {
 		http.ListenAndServe("localhost:6000", nil)
 	}()
 
-	imgServer := imgserver.NewImgServerApi(*hostFlag, *portFlag, *imageDirFlag, *cacheSizeFlag, *disableFaceDetectionFlag)
+	imgServer := imgserver.NewImgServerApi(*hostFlag, *portFlag, *imageDirFlag, *cacheSizeFlag, *concurrencyFlag, *faceDetectionFlag)
 	imgServer.Start()
 }
