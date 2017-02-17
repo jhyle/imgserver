@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestImgServer(t *testing.T) {
@@ -26,8 +27,9 @@ func TestImgServer(t *testing.T) {
 		http.ListenAndServe("localhost:6000", nil)
 	}()
 
-	api := imgserver.NewImgServerApi("localhost", 3030, tmpPath, 1024*2)
+	api := imgserver.NewImgServerApi("localhost", 3030, tmpPath, 1024*2, 4, true)
 	go api.Start()
+	time.Sleep(time.Second * 3)
 
 	buffer := new(bytes.Buffer)
 	baseUrl := "http://localhost:3030/"
@@ -58,6 +60,7 @@ func TestImgServer(t *testing.T) {
 						t.Fatal("GET returned " + strconv.Itoa(resp.StatusCode))
 					}
 					ioutil.ReadAll(resp.Body)
+					resp.Body.Close()
 				}
 			}
 		}()

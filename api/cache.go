@@ -100,7 +100,7 @@ func (cache *mapCache) Get(key string, mod time.Time) []byte {
 		item = cache.m[key]
 		if item != nil {
 			cache.stats.Hits++
-		} 
+		}
 	}
 	
 	cache.RUnlock()

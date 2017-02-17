@@ -212,16 +212,17 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 	if cachedImage := api.imageCache.Get(cacheKey, *modTime); cachedImage != nil {
 		sendJpeg(w, cachedImage)
 	} else {
-		origImage, err := api.imageDir.ReadImage(imagefile)
+		img, err := api.imageDir.ReadImage(imagefile)
 		if err != nil {
 			traffic.Logger().Print(err.Error())
 			w.WriteHeader(http.StatusNotFound)
 		} else {
 			api.semaphore <- struct{}{}
 			buffer := new(bytes.Buffer)
-			sizedImage := resizeImage(origImage, width, height, api.faceDetection)
-			err = jpeg.Encode(buffer, sizedImage, &jpeg.Options{95})
-			<- api.semaphore
+			if (width != 0 && img.Bounds().Dx() != width) || (height != 0 && img.Bounds().Dy() != height) {
+				img = resizeImage(img, width, height, api.faceDetection)
+			}
+			err = jpeg.Encode(buffer, img, &jpeg.Options{95})
 			if err != nil {
 				traffic.Logger().Print(err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
@@ -231,6 +232,7 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 				api.imageCache.Put(cacheKey, data, *modTime)
 				sendJpeg(w, data)
 			}
+			<- api.semaphore
 		}
 	}
 }
@@ -247,12 +249,17 @@ func (api *ImgServerApi) uploadHandler(w traffic.ResponseWriter, r *traffic.Requ
 
 	api.semaphore <- struct{}{}
 	filename := r.URL.Query().Get("image")
-	uploadedImage, _, err := image.Decode(r.Body)
+	img, _, err := image.Decode(r.Body)
+	r.Body.Close()
 
-	if err != nil {
+	bounds := img.Bounds()
+	if err != nil || bounds.Empty() {
 		w.WriteHeader(http.StatusBadRequest)
 	} else {
-		img := drawOnWhite(uploadedImage.Bounds().Size(), image.Pt(0, 0), image.Pt(0, 0), uploadedImage)
+		_, isJpeg := img.At(bounds.Min.X, bounds.Min.Y).(color.YCbCr)
+		if !isJpeg {
+			img = drawOnWhite(bounds.Size(), image.Pt(0, 0), image.Pt(0, 0), img)
+		}
 		err = api.imageDir.WriteImage(filename, img, 100)
 		if err != nil {
 			traffic.Logger().Print(err.Error())
