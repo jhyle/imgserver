@@ -31,6 +31,8 @@ type (
 
 const (
 	haarCascade = "/usr/share/opencv/haarcascades/haarcascade_profileface.xml"
+	maxHeight = 1080
+	maxWidth = 1920
 )
 
 var (
@@ -251,7 +253,7 @@ func (api *ImgServerApi) uploadHandler(w traffic.ResponseWriter, r *traffic.Requ
 	filename := r.URL.Query().Get("image")
 	img, _, err := image.Decode(r.Body)
 	r.Body.Close()
-
+	
 	bounds := img.Bounds()
 	if err != nil || bounds.Empty() {
 		w.WriteHeader(http.StatusBadRequest)
@@ -260,6 +262,19 @@ func (api *ImgServerApi) uploadHandler(w traffic.ResponseWriter, r *traffic.Requ
 		if !isJpeg {
 			img = drawOnWhite(bounds.Size(), image.Pt(0, 0), image.Pt(0, 0), img)
 		}
+
+		if bounds.Dx() > maxWidth || bounds.Dy() > maxHeight {
+			dx := float64(bounds.Dx())
+			dy := float64(bounds.Dy())
+			scaleX := dx / maxWidth
+			scaleY := dy / maxHeight
+			if scaleX > scaleY {
+				img = resize.Resize(maxWidth, uint(dy / scaleX), img, resize.Lanczos3)
+			} else {
+				img = resize.Resize(uint(dx / scaleY), maxHeight, img, resize.Lanczos3)
+			}
+		}
+
 		err = api.imageDir.WriteImage(filename, img, 100)
 		if err != nil {
 			traffic.Logger().Print(err.Error())

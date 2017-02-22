@@ -27,7 +27,7 @@ func TestImgServer(t *testing.T) {
 		http.ListenAndServe("localhost:6000", nil)
 	}()
 
-	api := imgserver.NewImgServerApi("localhost", 3030, tmpPath, 1024*2, 4, true)
+	api := imgserver.NewImgServerApi("localhost", 3030, tmpPath, 1024*2, 4, false)
 	go api.Start()
 	time.Sleep(time.Second * 3)
 
@@ -35,7 +35,7 @@ func TestImgServer(t *testing.T) {
 	baseUrl := "http://localhost:3030/"
 	filename := "test.jpg"
 	url := baseUrl + filename
-	rgba := image.NewRGBA(image.Rect(0, 0, 100, 200))
+	rgba := image.NewRGBA(image.Rect(0, 0, 5000, 5000))
 	jpeg.Encode(buffer, rgba, &jpeg.Options{90})
 	resp, err := http.Post(url, "image/jpeg", buffer)
 	if err != nil {
