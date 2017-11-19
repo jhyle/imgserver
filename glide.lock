@@ -1,0 +1,14 @@
+hash: 8d380923d93f6b659f5d9160fa0ad8bbc87a9f37e1739e13c6d70b67e1d4872e
+updated: 2017-11-19T10:38:58.780974784+01:00
+imports:
+- name: github.com/lazywei/go-opencv
+  version: fb0a687051c795176e0698f358231f2ab1585bcb
+  subpackages:
+  - opencv
+- name: github.com/nfnt/resize
+  version: 891127d8d1b52734debe1b3c3d7e747502b6c366
+- name: github.com/pilu/config
+  version: 3eb99e6c0b9a2dae0f56f05552c06ca5a643919b
+- name: github.com/pilu/traffic
+  version: 19ea6534e33472fb79059e2cdbe1d36f80a11526
+testImports: []

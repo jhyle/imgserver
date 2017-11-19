@@ -1,0 +1,8 @@
+package: github.com/jhyle/imgserver
+import:
+- package: github.com/lazywei/go-opencv
+  subpackages:
+  - opencv
+- package: github.com/nfnt/resize
+- package: github.com/pilu/traffic
+  version: ^0.5.3
