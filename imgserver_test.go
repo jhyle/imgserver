@@ -27,7 +27,7 @@ func TestImgServer(t *testing.T) {
 		http.ListenAndServe("localhost:6000", nil)
 	}()
 
-	api := imgserver.NewImgServerApi("localhost", 3030, tmpPath, 1024*2, 4, false)
+	api := imgserver.NewImgServerApi("localhost", 3030, tmpPath, 1024*2)
 	go api.Start()
 	time.Sleep(time.Second * 3)
 
@@ -88,7 +88,7 @@ func TestImgServer(t *testing.T) {
 	}
 
 	filenameCopy := "test2.jpg"
-	req, err = http.NewRequest("PUT", url + "/" + filenameCopy, nil)
+	req, err = http.NewRequest("PUT", url+"/"+filenameCopy, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestImgServer(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatal("GET returned " + strconv.Itoa(resp.StatusCode))
 	}
-	
+
 	req, err = http.NewRequest("DELETE", urlCopy, nil)
 	if err != nil {
 		t.Fatal(err)

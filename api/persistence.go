@@ -1,8 +1,6 @@
 package imgserver
 
 import (
-	"image"
-	"image/jpeg"
 	"io/ioutil"
 	"os"
 	"time"
@@ -12,13 +10,11 @@ type (
 	Directory interface {
 		ListFiles(minAge time.Duration) ([]string, error)
 		ReadFile(filename string) ([]byte, error)
-		ReadImage(filename string) (image.Image, error)
 		WriteFile(filename string, data []byte) error
-		WriteImage(filename string, image image.Image, quality int) error
 		DeleteFile(filename string) error
 		GetBasePath() string
 		GetFilePath(string) string
-		ModTime(string) (*time.Time)
+		ModTime(string) *time.Time
 	}
 
 	fsDirectory struct {
@@ -42,16 +38,16 @@ func (dir *fsDirectory) ListFiles(minAge time.Duration) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	modTime := time.Now().Add(-minAge)
-	
+
 	files := make([]string, 0, len(fileInfos))
 	for _, fileInfo := range fileInfos {
 		if !fileInfo.IsDir() && fileInfo.ModTime().Before(modTime) {
 			files = append(files, fileInfo.Name())
 		}
 	}
-	
+
 	return files, nil
 }
 
@@ -65,46 +61,15 @@ func (dir *fsDirectory) WriteFile(filename string, data []byte) error {
 	return ioutil.WriteFile(dir.GetFilePath(filename), data, 0644)
 }
 
-func (dir *fsDirectory) WriteImage(filename string, image image.Image, quality int) error {
-
-	file, err := os.Create(dir.GetFilePath(filename))
-	if err != nil {
-		return err
-	}
-
-	err = jpeg.Encode(file, image, &jpeg.Options{quality})
-	file.Close()
-
-	if err != nil {
-		os.Remove(filename)
-		return err
-	}
-
-	return nil
-}
-
 func (dir *fsDirectory) ReadFile(filename string) ([]byte, error) {
 
 	return ioutil.ReadFile(dir.GetFilePath(filename))
 }
 
-func (dir *fsDirectory) ReadImage(filename string) (image.Image, error) {
-
-	file, err := os.Open(dir.GetFilePath(filename))
-	if err != nil {
-		return nil, err
-	}
-
-	image, _, err := image.Decode(file)
-	file.Close()
-
-	return image, err
-}
-
-func (dir *fsDirectory) ModTime(filename string) (*time.Time) {
+func (dir *fsDirectory) ModTime(filename string) *time.Time {
 
 	fileInfo, err := os.Stat(dir.GetFilePath(filename))
-	if (err == nil) {
+	if err == nil {
 		modTime := fileInfo.ModTime()
 		return &modTime
 	} else {

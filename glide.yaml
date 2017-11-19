@@ -6,3 +6,4 @@ import:
 - package: github.com/nfnt/resize
 - package: github.com/pilu/traffic
   version: ^0.5.3
+- package: github.com/DAddYE/vips

@@ -1,6 +1,8 @@
-hash: 8d380923d93f6b659f5d9160fa0ad8bbc87a9f37e1739e13c6d70b67e1d4872e
-updated: 2017-11-19T10:38:58.780974784+01:00
+hash: e26e6f1bc3e243b2714f62fc4635c1dfeb8355844462abccadc2952fcd99b6b5
+updated: 2017-11-19T10:56:46.401977722+01:00
 imports:
+- name: github.com/DAddYE/vips
+  version: 87cfaf94f7a1b5dd0057a7dcea54d901f6ee5f62
 - name: github.com/lazywei/go-opencv
   version: fb0a687051c795176e0698f358231f2ab1585bcb
   subpackages:

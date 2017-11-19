@@ -1,20 +1,11 @@
 package imgserver
 
 import (
-	"bytes"
-	"github.com/lazywei/go-opencv/opencv"
-	"github.com/nfnt/resize"
+	"github.com/DAddYE/vips"
 	"github.com/pilu/traffic"
-	"image"
-	"image/color"
-	"image/draw"
-	_ "image/gif"
-	"image/jpeg"
-	_ "image/png"
+	"io/ioutil"
 	"net/http"
-	"os"
 	"strconv"
-	"sync"
 	"time"
 )
 
@@ -24,26 +15,17 @@ type (
 		port       int
 		imageDir   Directory
 		imageCache ByteCache
-		semaphore  chan struct {}
-		faceDetection bool
 	}
 )
 
 const (
-	haarCascade = "/usr/share/opencv/haarcascades/haarcascade_profileface.xml"
 	maxHeight = 1080
-	maxWidth = 1920
+	maxWidth  = 1920
 )
 
-var (
-	mutex   sync.Mutex
-	cascade *opencv.HaarCascade
-)
+func NewImgServerApi(host string, port int, imageDir string, cacheSize uint64) ImgServerApi {
 
-func NewImgServerApi(host string, port int, imageDir string, cacheSize uint64, concurrency int, faceDetection bool) ImgServerApi {
-
-	semaphore := make(chan struct {}, concurrency);
-	return ImgServerApi{host, port, NewFsDirectory(imageDir), NewByteCache(cacheSize), semaphore, faceDetection}
+	return ImgServerApi{host, port, NewFsDirectory(imageDir), NewByteCache(cacheSize)}
 }
 
 func toInt(input string, deflt int) int {
@@ -67,135 +49,6 @@ func sendJpeg(w traffic.ResponseWriter, data []byte) {
 	w.Write(data)
 }
 
-func detectFaces(img image.Image) (center image.Rectangle) {
-
-	cx, cy := (img.Bounds().Max.X-img.Bounds().Min.X)/2, (img.Bounds().Max.Y-img.Bounds().Min.Y)/2
-	center = image.Rect(cx, cy, cx, cy)
-
-	srcImg := opencv.FromImage(img)
-	if srcImg == nil {
-		return
-	}
-	defer srcImg.Release()
-
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	first := true
-	for _, value := range cascade.DetectObjects(srcImg) {
-		if value != nil {
-			if first {
-				first = false
-				center = image.Rect(value.X(), value.Y(), value.X()+value.Width(), value.Y()+value.Height())
-			} else {
-				if value.X() < center.Min.X {
-					center.Min.X = value.X()
-				}
-				if value.X()+value.Width() > center.Max.X {
-					center.Max.X = value.X() + value.Width()
-				}
-				if value.Y() < center.Min.Y {
-					center.Min.Y = value.Y()
-				}
-				if value.Y()+value.Height() > center.Max.Y {
-					center.Max.Y = value.Y() + value.Height()
-				}
-			}
-		}
-	}
-
-	return
-}
-
-func resizeImage(origImage image.Image, width, height int, faceDetection bool) (image.Image) {
-
-	var sizedImage image.Image
-	bounds := origImage.Bounds()
-	origWidth := bounds.Max.X - bounds.Min.X
-	origHeight := bounds.Max.Y - bounds.Min.Y
-
-	if width > 0 && height > 0 {
-		if width > origWidth && height > origHeight {
-			sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, 0), image.Pt((width-origWidth)/2, (height-origHeight)/2), origImage)
-		} else if width > origWidth {
-			sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, (origHeight-height)/2), image.Pt((width-origWidth)/2, 0), origImage)
-		} else if height > origHeight {
-			sizedImage = drawOnWhite(image.Pt(width, height), image.Pt((origWidth-width)/2, 0), image.Pt(0, (height-origHeight)/2), origImage)
-		} else {
-			origAspectRatio := float64(origWidth) / float64(origHeight)
-			croppedAspectRatio := float64(width) / float64(height)
-
-			if origAspectRatio < croppedAspectRatio {
-				scaling := float64(width) / float64(origWidth)
-				sizedImage = resize.Resize(uint(width), uint(float64(origHeight)*scaling), origImage, resize.Lanczos3)
-
-				dY := (sizedImage.Bounds().Dy() - height) / 2
-				if faceDetection {
-					faces := detectFaces(origImage)
-					fY2 := int(float64(faces.Max.Y)*scaling) + int(float64(faces.Max.Y-faces.Min.Y)*scaling/5)
-					if fY2 > sizedImage.Bounds().Dy() {
-						fY2 = sizedImage.Bounds().Dy()
-					}
-					if fY2 > dY+height {
-						dY = fY2 - height
-					}
-					fY1 := int(float64(faces.Min.Y)*scaling) - int(float64(faces.Max.Y-faces.Min.Y)*scaling/5)
-					if fY1 < 0 {
-						fY1 = 0
-					}
-					if fY1 < dY {
-						dY = fY1
-					}
-				}
-
-				sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(0, dY), image.Pt(0, 0), sizedImage)
-			} else {
-				scaling := float64(height) / float64(origHeight)
-				sizedImage = resize.Resize(uint(float64(origWidth)*scaling), uint(height), origImage, resize.Lanczos3)
-
-				dX := (sizedImage.Bounds().Dx() - width) / 2
-				if faceDetection {
-					faces := detectFaces(origImage)
-					fX2 := int(float64(faces.Max.X)*scaling) + int(float64(faces.Max.X-faces.Min.X)*scaling/5)
-					if fX2 > sizedImage.Bounds().Dx() {
-						fX2 = sizedImage.Bounds().Dx()
-					}
-					if fX2 > dX+width {
-						dX = fX2 - width
-					}
-					fX1 := int(float64(faces.Min.X)*scaling) - int(float64(faces.Max.X-faces.Min.X)*scaling/5)
-					if fX1 < 0 {
-						fX1 = 0
-					}
-					if fX1 < dX {
-						dX = fX1
-					}
-				}
-
-				sizedImage = drawOnWhite(image.Pt(width, height), image.Pt(dX, 0), image.Pt(0, 0), sizedImage)
-			}
-		}
-	} else if width > 0 {
-		if width <= origWidth {
-			scaling := float64(width) / float64(origWidth)
-			sizedImage = resize.Resize(uint(width), uint(float64(origHeight)*scaling), origImage, resize.Lanczos3)
-		} else {
-			sizedImage = drawOnWhite(image.Pt(width, origHeight), image.Pt(0, 0), image.Pt((width-origWidth)/2, 0), origImage)
-		}
-	} else if height > 0 {
-		if height <= origHeight {
-			scaling := float64(height) / float64(origHeight)
-			sizedImage = resize.Resize(uint(float64(origWidth)*scaling), uint(height), origImage, resize.Lanczos3)
-		} else {
-			sizedImage = drawOnWhite(image.Pt(origWidth, height), image.Pt(0, 0), image.Pt(0, (height-origHeight)/2), origImage)
-		}
-	} else {
-		sizedImage = origImage
-	}
-	
-	return sizedImage
-}
-
 func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Request) {
 
 	params := r.URL.Query()
@@ -214,76 +67,49 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 	if cachedImage := api.imageCache.Get(cacheKey, *modTime); cachedImage != nil {
 		sendJpeg(w, cachedImage)
 	} else {
-		img, err := api.imageDir.ReadImage(imagefile)
+		image, err := api.imageDir.ReadFile(imagefile)
 		if err != nil {
 			traffic.Logger().Print(err.Error())
-			w.WriteHeader(http.StatusNotFound)
-		} else {
-			api.semaphore <- struct{}{}
-			buffer := new(bytes.Buffer)
-			if (width != 0 && img.Bounds().Dx() != width) || (height != 0 && img.Bounds().Dy() != height) {
-				img = resizeImage(img, width, height, api.faceDetection)
-			}
-			err = jpeg.Encode(buffer, img, &jpeg.Options{95})
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if width != 0 || height != 0 {
+			image, err = vips.Resize(image, vips.Options{Width: width, Height: height, Enlarge: true, Embed: true, Extend: vips.EXTEND_WHITE, Interpolator: vips.BICUBIC, Quality: 85})
 			if err != nil {
 				traffic.Logger().Print(err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
-			} else {
-				data := make([]byte, buffer.Len())
-				buffer.Read(data)
-				api.imageCache.Put(cacheKey, data, *modTime)
-				sendJpeg(w, data)
+				return
 			}
-			<- api.semaphore
 		}
+		api.imageCache.Put(cacheKey, image, *modTime)
+		sendJpeg(w, image)
 	}
-}
-
-func drawOnWhite(size, srcOfs, dstOfs image.Point, input image.Image) image.Image {
-
-	img := image.NewRGBA(image.Rect(0, 0, size.X, size.Y))
-	draw.Draw(img, img.Bounds(), &image.Uniform{color.White}, image.ZP, draw.Src)
-	draw.Draw(img, img.Bounds().Add(dstOfs), input, input.Bounds().Min.Add(srcOfs), draw.Over)
-	return img
 }
 
 func (api *ImgServerApi) uploadHandler(w traffic.ResponseWriter, r *traffic.Request) {
 
-	api.semaphore <- struct{}{}
 	filename := r.URL.Query().Get("image")
-	img, _, err := image.Decode(r.Body)
+	data, err := ioutil.ReadAll(r.Body)
 	r.Body.Close()
-	
-	bounds := img.Bounds()
-	if err != nil || bounds.Empty() {
+
+	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-	} else {
-		_, isJpeg := img.At(bounds.Min.X, bounds.Min.Y).(color.YCbCr)
-		if !isJpeg {
-			img = drawOnWhite(bounds.Size(), image.Pt(0, 0), image.Pt(0, 0), img)
-		}
-
-		if bounds.Dx() > maxWidth || bounds.Dy() > maxHeight {
-			dx := float64(bounds.Dx())
-			dy := float64(bounds.Dy())
-			scaleX := dx / maxWidth
-			scaleY := dy / maxHeight
-			if scaleX > scaleY {
-				img = resize.Resize(maxWidth, uint(dy / scaleX), img, resize.Lanczos3)
-			} else {
-				img = resize.Resize(uint(dx / scaleY), maxHeight, img, resize.Lanczos3)
-			}
-		}
-
-		err = api.imageDir.WriteImage(filename, img, 100)
-		if err != nil {
-			traffic.Logger().Print(err.Error())
-			w.WriteHeader(http.StatusInternalServerError)
-		} else {
-			w.WriteHeader(http.StatusOK)
-		}
+		return
 	}
-	<- api.semaphore
+
+	data, err = vips.Resize(data, vips.Options{Format: vips.JPEG, Width: maxWidth, Height: maxHeight, Crop: true, Interpolator: vips.BICUBIC})
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	err = api.imageDir.WriteFile(filename, data)
+	if err != nil {
+		traffic.Logger().Print(err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 func (api *ImgServerApi) copyHandler(w traffic.ResponseWriter, r *traffic.Request) {
@@ -296,14 +122,14 @@ func (api *ImgServerApi) copyHandler(w traffic.ResponseWriter, r *traffic.Reques
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	
-	err = api.imageDir.WriteFile(dst, data);
+
+	err = api.imageDir.WriteFile(dst, data)
 	if err != nil {
 		traffic.Logger().Print(err.Error())
-		w.WriteHeader(http.StatusInternalServerError);
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	
+
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -354,12 +180,4 @@ func (api *ImgServerApi) Start() {
 	router.Put("/:src/:dst", api.copyHandler)
 	router.Delete("/:image", api.deleteHandler)
 	router.Run()
-}
-
-func init() {
-
-	if _, err := os.Stat(haarCascade); os.IsNotExist(err) {
-		panic(haarCascade + " not found")
-	}
-	cascade = opencv.LoadHaarClassifierCascade(haarCascade)
 }
