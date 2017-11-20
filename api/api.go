@@ -21,6 +21,7 @@ type (
 const (
 	maxHeight = 1080
 	maxWidth  = 1920
+	quality   = 90
 )
 
 func NewImgServerApi(host string, port int, imageDir string, cacheSize uint64) ImgServerApi {
@@ -74,7 +75,7 @@ func (api *ImgServerApi) imageHandler(w traffic.ResponseWriter, r *traffic.Reque
 			return
 		}
 		if width != 0 || height != 0 {
-			image, err = vips.Resize(image, vips.Options{Width: width, Height: height, Enlarge: true, Embed: true, Extend: vips.EXTEND_WHITE, Interpolator: vips.BICUBIC, Quality: 85})
+			image, err = vips.Resize(image, vips.Options{Width: width, Height: height, Enlarge: true, Embed: true, Extend: vips.EXTEND_WHITE, Interpolator: vips.BICUBIC, Quality: quality})
 			if err != nil {
 				traffic.Logger().Print(err.Error())
 				w.WriteHeader(http.StatusInternalServerError)
